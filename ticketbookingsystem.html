@@ -1,0 +1,230 @@
+ticket-booking-system
+│
+├── server.js
+├── redisClient.js
+├── bookingController.js
+├── seatModel.js
+├── package.json
+└── README.md
+{
+  "name": "concurrent-ticket-booking",
+  "version": "1.0.0",
+  "description": "Concurrent ticket booking system with Redis locking",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "redis": "^4.6.7",
+    "body-parser": "^1.20.2",
+    "uuid": "^9.0.0"
+  }
+}
+npm install
+const redis = require("redis");
+
+const client = redis.createClient({
+    url: "redis://127.0.0.1:6379"
+});
+
+client.on("error", (err) => {
+    console.log("Redis Error", err);
+});
+
+(async () => {
+    await client.connect();
+    console.log("Redis connected");
+})();
+const seats = {};
+
+function initializeSeats(totalSeats = 10) {
+    for (let i = 1; i <= totalSeats; i++) {
+        seats[i] = {
+            seatId: i,
+            booked: false
+        };
+    }
+}
+
+function getSeat(seatId) {
+    return seats[seatId];
+}
+
+function bookSeat(seatId) {
+    if (seats[seatId] && !seats[seatId].booked) {
+        seats[seatId].booked = true;
+        return true;
+    }
+    return false;
+}
+
+function getAllSeats() {
+    return seats;
+}
+
+module.exports = {
+    initializeSeats,
+    getSeat,
+    bookSeat,
+    getAllSeats
+};
+      const redisClient = require("./redisClient");
+const { getSeat, bookSeat } = require("./seatModel");
+const { v4: uuidv4 } = require("uuid");
+
+const LOCK_TIMEOUT = 5000;
+
+async function bookTicket(req, res) {
+
+    const seatId = req.params.id;
+    const lockKey = `lock:seat:${seatId}`;
+    const lockValue = uuidv4();
+
+    try {
+
+        const lock = await redisClient.set(lockKey, lockValue, {
+            NX: true,
+            PX: LOCK_TIMEOUT
+        });
+
+        if (!lock) {
+            return res.json({
+                success: false,
+                message: "Seat is currently being booked by someone else"
+            });
+        }
+
+        const seat = getSeat(seatId);
+
+        if (!seat) {
+            return res.json({
+                success: false,
+                message: "Seat not found"
+            });
+        }
+
+        if (seat.booked) {
+            return res.json({
+                success: false,
+                message: "Seat already booked"
+            });
+        }
+
+        const booked = bookSeat(seatId);
+
+        await redisClient.del(lockKey);
+
+        if (booked) {
+            return res.json({
+                success: true,
+                message: `Seat ${seatId} booked successfully`
+            });
+        }
+
+        res.json({
+            success: false,
+            message: "Booking failed"
+        });
+
+    } catch (error) {
+
+        await redisClient.del(lockKey);
+
+        res.json({
+            success: false,
+            error: error.message
+        });
+    }
+}
+
+module.exports = {
+    bookTicket
+};
+      const express = require("express");
+const bodyParser = require("body-parser");
+
+const { initializeSeats, getAllSeats } = require("./seatModel");
+const { bookTicket } = require("./bookingController");
+
+const app = express();
+
+app.use(bodyParser.json());
+
+initializeSeats(20);
+
+app.get("/", (req, res) => {
+    res.send("Ticket Booking System Running");
+});
+
+app.get("/seats", (req, res) => {
+    res.json(getAllSeats());
+});
+
+app.post("/book/:id", bookTicket);
+
+const PORT = 3000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+      # Concurrent Ticket Booking System
+
+## Aim
+To create a concurrent ticket booking system with seat locking using Redis.
+
+## Tech Stack
+- Node.js
+- Express.js
+- Redis
+
+## Features
+- Seat booking API
+- Redis distributed locking
+- Prevents race conditions
+- Concurrent safe booking
+
+## Install
+
+1. Clone repo
+
+git clone https://github.com/yourusername/ticket-booking-system
+
+2. Install dependencies
+
+npm install
+
+3. Start Redis server
+
+redis-server
+
+4. Start project
+
+node server.js
+
+## API
+
+Get seats
+
+GET /seats
+
+Book seat
+
+POST /book/:seatId
+
+Example
+
+POST /book/5
+
+## Hardware/Software Requirements
+
+Node.js 18+
+Redis
+Express.js
+Load testing tool (Artillery)
+
+## Output
+
+Seat booking response with success or failure message.
+
+module.exports = client;
